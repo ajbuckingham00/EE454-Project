@@ -1,3 +1,6 @@
+#busdata must be in order in excel file, buses must start at 1 and go straight up to max
+
+
 import numpy as np
 import pandas as pd
 
@@ -10,10 +13,17 @@ class PowerFlow():
         
         self.tolerance = tolerance
 
+        self.BusData = 0
+        self.LineData = 0
+        self.numBusses = 0
+        self.numConnections = 0
+        
         self.admittanceReal = 0
         self.admittanceImag = 0
         
-        self.equationMatrix = 0
+        #self.equationMatrix = 0
+        self.PEquationMatrix = 0
+        self.QEquationMatrix = 0
         self.implicitEquationMatrix = 0
         
         self.deltaMatrix = 0
@@ -25,74 +35,57 @@ class PowerFlow():
 
         self.convergenceHistory = 0
 
-    #pulls the 
+    #pulls data from excel file into class
     def readFromFile(self, fileName):
-        BusData = pd.read_excel(fileName, sheet_name = 0)
-        LineData = pd.read_excel(fileName, sheet_name = 1)
+        self.BusData = pd.read_excel(fileName, sheet_name = 0)
+        self.LineData = pd.read_excel(fileName, sheet_name = 1)
 
-        BusNumber = len(BusData) # counts the number of buses
-        LineNumber = len(LineData) # counts the number of connections
+        self.numBusses = len(self.BusData) # counts the number of buses
+        self.numConnections = len(self.LineData) # counts the number of connections
 
-        print(LineData['From'].loc[LineData.index[0]])
+        #build matrices that will not change over NR iterations
+        self.buildAdmittanceMatrix()
+        self.getVoltages()
+        self.getBusType()
 
-        # creates a zero matrix based on the number of buses
-
-        self.admittanceReal = np.zeros((BusNumber, BusNumber)) 
-        self.admittanceImag = np.zeros((BusNumber, BusNumber))
-
-        # fills in the line connection values to the matrix
-    
-        for i in range(LineNumber):
-            ind1 = LineData['From'].loc[LineData.index[i]]
-            ind2 = LineData['To'].loc[LineData.index[i]]
-            real = LineData['Rtotal, p.u.'].loc[LineData.index[i]]
-            imag = LineData['Xtotal, p.u.'].loc[LineData.index[i]]
-
-            if imag == 0:
-                new_imag = 0
-            else:
-                new_imag = np.negative(1/imag)
-            if real == 0:
-                new_real = 0
-            else:
-                new_real = 1/real
-
-
-            self.admittanceImag[ind1 - 1, ind2 - 1] = np.negative(new_imag)
-            self.admittanceImag[ind2 - 1, ind1 - 1] = np.negative(new_imag)
-            self.admittanceReal[ind1 - 1, ind2 - 1] = np.negative(new_real)
-            self.admittanceReal[ind2 - 1, ind1 - 1] = np.negative(new_real)
-        
-            # Starts adding in the diagonal numbers
-            
-            for i in range(BusNumber):
-                print("i: ", i)
-                Real_rowtotal = 0
-                Imag_rowtotal = 0
-                b = LineData['Btotal, p.u.'].loc[LineData.index[i]]
-                
-                if b == 0:
-                    new_b = 0
-                else:
-                    new_b = b / 2
-                    
-                
-                for j in range(BusNumber):
-                    Real_rowtotal += np.negative(self.admittanceReal[i][j])
-                    Imag_rowtotal += np.negative(self.admittanceImag[i][j])
-                    
-                self.admittanceReal[i, i] = Real_rowtotal
-                self.admittanceImag[i, i] = Imag_rowtotal + new_b
-
-        print(self.admittanceReal, self.admittanceImag)
-
-        #add functionality here... pull voltages from busdata into voltages matrix for NR
-        self.voltages = [[]]
-        self.angles = [[]]
-        self.busType = [[]]
-
-        #update the output values of the functions to be solved with the initial flat case as input
+        #update equations matrix with processed values to prepare for 1st NR iteration
         self.updateEquationMatrix()
+
+    def buildAdmittanceMatrix(self):
+        admittanceComplex = np.zeros((self.numBusses, self.numBusses), dtype=np.complex_)
+        self.admittanceReal = np.zeros((self.numBusses, self.numBusses))
+        self.admittanceImag = np.zeros((self.numBusses, self.numBusses))
+
+        #iterate through connection, and for each add to every cell of admittance matrix it affects
+        for i in range(self.numConnections):
+            node1 = self.LineData['From'][i]
+            node2 = self.LineData['To'][i]
+
+            #add the admittance between nodes to corresponding off diagonal rows
+            #then add the admittance between nodes and 1/2 the susceptance to the diagonal rows
+
+            resistance1to2 = self.LineData['Rtotal, p.u.'][i]
+            reactance1to2 = self.LineData['Xtotal, p.u.'][i]
+            reactanceShunt = self.LineData['Btotal, p.u.'][i]
+
+            admittance1to2 = 1/(resistance1to2 + 1j * reactance1to2)
+            susceptance1and2 = (1j * reactanceShunt) / 2
+
+            admittanceComplex[node1 - 1][node1 - 1] += ( admittance1to2 + susceptance1and2 )
+            admittanceComplex[node2 - 1][node2 - 1] += ( admittance1to2 + susceptance1and2 )
+
+            admittanceComplex[node1 - 1][node2 - 1] -= ( admittance1to2 )
+            admittanceComplex[node2 - 1][node1 - 1] -= ( admittance1to2 )
+
+        self.admittanceReal = np.real(admittanceComplex)
+        self.admittanceImag = np.imag(admittanceComplex)
+        
+    def getVoltages(self): #voltages AND angles
+        self.voltages = self.BusData['V Set']
+        self.angles = np.zeros_like(self.voltages)
+
+    def getBusType(self):
+        self.busType = self.BusData['Type']
 
     def newtonRaphsonIteration(self):
         #update all these values
@@ -121,24 +114,19 @@ class PowerFlow():
         #self.voltages += self.deltaMatrix
 
     def updateEquationMatrix(self):
-        return
+        self.PEquationList = np.zeros(self.numBusses)
+        self.QEquationList = np.zeros(self.numBusses)
+        #self.implicitEquationMatrix = 
+
+        for i in range(self.numBusses):
+            for j in range(self.numBusses):
+                self.PEquationList[i][j] += ( self.voltages[i] * self.voltages[j] * ( self.admittanceReal[i][j]*np.cos(self.angles[i] - self.angles[j]) +self.admittanceImag[i][j]*np.sin(self.angles[i] - self.angles[j] ) ) )
+
+                self.QEquationList[i][j] += ( self.voltages[i] * self.voltages[j] * ( self.admittanceReal[i][j]*np.sin(self.angles[i] - self.angles[j]) -self.admittanceImag[i][j]*np.cos(self.angles[i] - self.angles[j] ) ) )
+
+        print(self.EquationMatrix)
+        
         #for loop through matrix and update each equation according to power flow slides
         #if the equation has a known P or Q, then also add it to the implicit equations list
-        #will have to look at the type of bus to do this, I think?
+        #will have to look at the type of bus to do this, I think? PQ buses produce implicit equations?
         #also seems like we will end up with too many implicit equations, how do we pick which ones to use?
-
-        #self.implicitEquationMatrix = ...
-
-        #for i in range():
-        #    for j in range():
-        #        val = #value for that cell
-        #        if(busType[][] == ...):
-                    #if the bus type indicates this will be an explicit equation, also add it to explicit list
-
-        
-        #will have to figure out which ones are implicit and which are explicit, only put implicit equations into this matrix
-        #how will we do that? look at the busdata and see where we know P and Q, cross reference with list?
-        
-        #self.equationMatrix = ... #some subset of the full equation matrix with only the implicit equations needed for NR
-    
-        

@@ -115,36 +115,36 @@ class PowerFlow():
                     jacobian[i - 1][i - 1] -= jacobian[k][i]
 
         # M matrix
-        for i in range(numPV, self.numBusses):
+        for i in range(numPV + 1, self.numBusses):
             for k in range(1, self.numBusses):
                 if i != k:
-                    jacobian[k - 1][i + numPQ] = self.voltage[k] * (self.admittanceReal[k] * np.cos(
+                    jacobian[k - 1][i + numPQ - 1] = self.voltage[k] * (self.admittanceReal[k] * np.cos(
                                                       self.angle[k] - self.angle[i]) + self.admittanceImag * np.sin(
                                                       self.angle[k] - self.angle[i]))
                 
-                    jacobian[i + numPQ][i + numPQ] += jacobian[k - 1][i + numPQ] +  2 * self.admittanceReal[k][k] * self.voltages[k]
+                    jacobian[i + numPQ - 1][i + numPQ - 1] += jacobian[k - 1][i + numPQ] - 1 +  2 * self.admittanceReal[k][k] * self.voltages[k]
 
         # N matrix
         for i in range(1, self.numBusses):
-            for k in range(numPV, self.numBusses):
+            for k in range(numPV + 1, self.numBusses):
                 if i != k:
-                    jacobian[k + numPQ][i - 1] = self.voltage[k] * self.voltage[i] * (np.negative(self.admittanceReal[k][i]) * np.cos(
+                    jacobian[k + numPQ - 1][i - 1] = self.voltage[k] * self.voltage[i] * (np.negative(self.admittanceReal[k][i]) * np.cos(
                                                  self.angle[k] - self.angle[i]) - self.admittanceImag[k][i] * np.sin(
                                                  self.angle[k] - self.angle[i]))
                 
-                    jacobian[i - 1][i - 1] -= jacobian[k + numPQ][i - 1]
+                    jacobian[i - 1][i - 1] -= jacobian[k + numPQ - 1][i - 1]
 
         # L matrix
-        for i in range(numPV, self.numBusses):
-            for k in range(numPV, self.numBusses):
+        for i in range(numPV + 1, self.numBusses):
+            for k in range(numPV + 1, self.numBusses):
                 if i != k:
-                    jacobian[k + numPQ][i + numPQ] = self.voltage[k] * (self.admittanceReal[k][i] * np.sin(
+                    jacobian[k + numPQ - 1][i + numPQ - 1] = self.voltage[k] * (self.admittanceReal[k][i] * np.sin(
                                                      self.angle[k] - self.angle[i]) - self.admittanceImag[k][i] * np.cos(
                                                      self.angle[k] - self.angle[i]))
 
-                    jacobianSum += jacobian[k + numPQ][i + numPQ] 
+                    jacobianSum += jacobian[k + numPQ - 1][i + numPQ - 1] 
                     
-            jacobian[i + numPQ][i + numPQ] = np.negative(2) * self.admittanceImag[k][k] * self.voltages[k] + jacobianSum
+            jacobian[i + numPQ - 1][i + numPQ - 1] = np.negative(2) * self.admittanceImag[k][k] * self.voltages[k] + jacobianSum
 
         
         self.inverseJacobian = np.linalg.inv(jacobian)

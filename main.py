@@ -10,7 +10,7 @@ Solver.readFromFile("notes_example.xlsx")
 
 print(Solver.admittanceReal)
 print(Solver.admittanceImag)
-
+print(Solver.voltages)
 
 #while(True):
 #    currentDelta, currentError = Solver.newtonRaphsonIteration()

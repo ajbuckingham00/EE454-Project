@@ -81,7 +81,16 @@ class PowerFlow():
         self.admittanceImag = np.imag(admittanceComplex)
         
     def getVoltages(self): #voltages AND angles
-        self.voltages = self.BusData['V Set']
+        tempvoltages = self.BusData['V Set']
+        for i in range(self.numBusses):
+            if self.busType[i] == 'S':
+                self.voltages.append(tempvoltages.pop(i))
+        for i in range(self.numBusses):           
+            if self.busType[i] == 'G':
+                self.voltages.append(tempvoltages.pop(i))
+        for i in range(self.numBusses):
+            if self.busType[i] == 'D':
+                self.voltages.append(tempvoltages.pop(i))
         self.angles = np.zeros_like(self.voltages)
 
     def getBusType(self):

@@ -1,27 +1,24 @@
 import power_flow as pf
 
-#test
-
 #all that the constructor will do is initialize self variables, no processing
 Solver = pf.PowerFlow(5, 0.1)
 
 #this will udpate internal admittance matrix and create power flow equation matrix
 Solver.readFromFile("notes_example.xlsx")
 
-print(Solver.admittanceReal)
-print(Solver.admittanceImag)
-print(Solver.voltages)
 
-#while(True):
-#    currentDelta, currentError = Solver.newtonRaphsonIteration()
-#    
-#    #checks for if NR should stop iterating, max iterations or solved
-#    if(max(currentError) < tolerance):
-#        print(currentDelta, currentError)
-#        break
-#    elif(Solver.currIterations > Solver.maxIterations):
-#        print("Maximum iterations reached with no solutions")
-#        break
+while(True):
+    currentDelta, currentErrorP, currentErrorQ = Solver.newtonRaphsonIteration()
+    
+    #checks for if NR should stop iterating, max iterations or solved
+    if(max(currentErrorP) < Solver.tolerance and
+        max(currentErrorQ) < Solver.tolerance):
+        print("Success!")
+        print(currentDelta, currentErrorP, currentErrorQ)
+        break
+    elif(Solver.currIterations > Solver.maxIterations):
+        print("Maximum iterations reached with no solutions")
+        break
 
 
 #what do we actually need to output? Excel file, with what in it?

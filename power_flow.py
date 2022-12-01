@@ -33,7 +33,7 @@ class PowerFlow():
         self.QEquationList = 0
         self.implicitEquationList = 0
         
-        self.deltaMatrix = 0
+        self.deltaLista = 0
         self.inverseJacobian = 0
 
         self.voltages = 0
@@ -67,7 +67,7 @@ class PowerFlow():
         self.getBusType()
 
         #update equations matrix with processed values to prepare for 1st NR iteration
-        self.updateEquationMatrix()
+        self.updateEquationLists()
 
     def buildAdmittanceMatrix(self):
         admittanceComplex = np.zeros((self.numBusses, self.numBusses), dtype=np.complex_)
@@ -116,18 +116,17 @@ class PowerFlow():
         self.currIterations += 1
         
         self.updateInverseJacobian()
-        self.updateDeltaMatrix()
+        self.updateDeltaList()
         self.updateVoltages()
-        self.updateEquationMatrix()
+        self.updateEquationLists()
 
-        return self.deltaMatrix, self.PEquationList, self.QEquationList
+        return self.deltaList, self.PEquationList, self.QEquationList
 
     #update the inverse jacobian matrix
     def updateInverseJacobian(self):
         numPQ = np.count_nonzero(self.busType == 'D')
         numPV = np.count_nonzero(self.busType == 'G')
         jacobian = np.zeros(((self.numBusses-1) + numPQ, (self.numBusses-1) + numPQ))
-        jacobianSum = 0
 
         # H matrix
         # H goes from 2 to the number of busses
@@ -138,68 +137,91 @@ class PowerFlow():
                             self.admittanceReal[k][i] * np.sin(self.angles[k] - self.angles[i]) -
                             self.admittanceImag[k][i] * np.cos(self.angles[k] - self.angles[i])
                         )
-                
-                    jacobian[i - 1][i - 1] -= jacobian[k][i]
+                else:
+                    for l in range(0, self.numBusses):
+                        if l != k:
+                            jacobian[k - 1][i - 1] += (self.voltages[k] * self.voltages[l]) * (
+                                    np.negative(self.admittanceReal[k][l]) * np.sin(self.angles[k] - self.angles[l]) -
+                                    self.admittanceImag[k][l] * np.cos(self.angles[k] - self.angles[l])
+                                )
+        print("H processed...")
+        print(jacobian)
 
         # M matrix
         for i in range(numPV + 1, self.numBusses):
             for k in range(1, self.numBusses):
                 if i != k:
-                    jacobian[k - 1][i + numPQ - 1] = self.voltages[k] * (
+                    jacobian[k - 1][(self.numBusses - 1 + i) - 1] = self.voltages[k] * (
                             self.admittanceReal[k][i] * np.cos(self.angles[k] - self.angles[i]) +
                             self.admittanceImag[k][i] * np.sin(self.angles[k] - self.angles[i])
                         )
                 
-                    jacobian[i + numPQ - 1][i + numPQ - 1] += (
-                            jacobian[k - 1][i + numPQ - 1] +  2 * self.admittanceReal[k][k] * self.voltages[k]
-                        )
+                else:
+                    for l in range(0, self.numBusses):
+                        if l != k:
+                            jacobian[k - 1][(self.numBusses - 1 + i) - 1] += (self.voltages[l]) * (
+                                    self.admittanceReal[k][l] * np.cos(self.angles[k] - self.angles[l]) +
+                                    self.admittanceImag[k][l] * np.sin(self.angles[k] - self.angles[l]) 
+                                ) + 2 * self.admittanceReal[k][k] * self.voltages[k]
+        print("M processed...")
+        print(jacobian)
 
         # N matrix
         for i in range(1, self.numBusses):
             for k in range(numPV + 1, self.numBusses):
                 if i != k:
-                    jacobian[k + numPQ - 1][i - 1] = (self.voltages[k] * self.voltages[i]) * (
+                    jacobian[(self.numBusses - 1 + k) - 1][i - 1] = (self.voltages[k] * self.voltages[i]) * (
                             np.negative(self.admittanceReal[k][i]) * np.cos(self.angles[k] - self.angles[i]) -
                             self.admittanceImag[k][i] * np.sin(self.angles[k] - self.angles[i])
                         )
-                
-                    jacobian[i - 1][i - 1] -= jacobian[k + numPQ - 1][i - 1]
+                else:
+                    for l in range(0, self.numBusses):
+                        if l != k:
+                            jacobian[(self.numBusses - 1 + k) - 1][i - 1] += (self.voltages[k] * self.voltages[l]) * (
+                                    self.admittanceReal[k][l] * np.cos(self.angles[k] - self.angles[l]) +
+                                    self.admittanceImag[k][l] * np.sin(self.angles[k] - self.angles[l]) 
+                                )
+        print("N processed...")
+        print(jacobian)
 
         # L matrix
         for i in range(numPV + 1, self.numBusses):
             for k in range(numPV + 1, self.numBusses):
                 if i != k:
-                    jacobian[k + numPQ - 1][i + numPQ - 1] = self.voltages[k] * (
+                    jacobian[(self.numBusses - 1 + k) - 1][(self.numBusses - 1 + i) - 1] = self.voltages[k] * (
                             self.admittanceReal[k][i] * np.sin(self.angles[k] - self.angles[i]) -
                             self.admittanceImag[k][i] * np.cos(self.angles[k] - self.angles[i])
                         )
+                else:
+                    jacobian[(self.numBusses - 1 + k) - 1][(self.numBusses - 1 + i) - 1] += -2 * self.admittanceImag[k][k] * self.voltages[k]
+                    for l in range(0, self.numBusses):
+                        if l != k:
+                            jacobian[(self.numBusses - 1 + k) - 1][(self.numBusses - 1 + i) - 1] += (self.voltages[l]) * (
+                                    self.admittanceReal[k][l] * np.sin(self.angles[k] - self.angles[l]) +
+                                    np.negative(self.admittanceImag[k][l]) * np.cos(self.angles[k] - self.angles[l])
+                                )
+        print("L processed...")
+        print(jacobian)
 
-                    jacobianSum += jacobian[k + numPQ - 1][i + numPQ - 1] 
-                    
-            jacobian[i + numPQ - 1][i + numPQ - 1] = np.negative(2) * self.admittanceImag[k][k] * self.voltages[k] + jacobianSum
 
-        #self.inverseJacobian = np.linalg.inv(jacobian) erroring out
-        self.inverseJacobian = jacobian
+        print("jacobian: ")
+        print(jacobian)
+        #self.inverseJacobian = np.linalg.inv(jacobian)
 
-    def updateDeltaMatrix(self):
+    def updateDeltaList(self):
         #check the order here, also should these be vertical matrices?
-        self.deltaMatrix = np.dot( (-1 * self.inverseJacobian), self.implicitEquationList)
+        self.deltaList = np.dot( (-1 * self.inverseJacobian), self.implicitEquationList)
 
     def updateVoltages(self):
-        #these won't be the same shape, I don't think. Will not be this simple
-        #self.voltages += self.deltaMatrix
-        #self.angles += self.deltaMatrix
+        #delta list will have theta2 to thetan, then vm+1 to vN
 
-        #for angle in deltaMatrix:
-            #update angles
+        for i in range(1, self.numBusses): #pull angles out of delta list and add them to angles list
+            self.angles[i] += self.deltaList[i-1]
 
-        #for voltage in deltaMatrix:
-            #update voltages
+        for i in range(self.numBusses, self.numBusses + np.count_nonzero(self.busType == 'D')): #pull voltages out of delta list and add them to voltages list
+            self.voltages[i] += self.deltaList[i-1]
 
-        for i in range(1, self.numBusses):
-            print(self.deltaMatrix[i])
-
-    def updateEquationMatrix(self):
+    def updateEquationLists(self):
         
         self.PEquationList = np.zeros(self.numBusses)
         self.QEquationList = np.zeros(self.numBusses)
@@ -223,12 +245,14 @@ class PowerFlow():
                 self.PEquationList[i] += PSum
                 self.QEquationList[i] += QSum
 
-            #add necessary P and Q equations to implicit equation list
-                #SHOULD THIS BE A VERTICAL MATRIX?
-            if(self.busType[i] == 'D'): #if PQ bus, both the p and q equation will be explicit
-                self.implicitEquationList.append(self.PEquationList[i] - self.BusData['P MW'][i])
-                self.implicitEquationList.append(self.QEquationList[i] - self.BusData['Q MVAr'][i])
-            elif(self.busType[i] == 'G'): #if PV bus, only the p equation will be explicit
-                self.implicitEquationList.append(self.PEquationList[i] - self.BusData['P MW'][i])
+        for i in range(0, len(self.PEquationList)): #get each item in the P list, see if it is implicit or not and add it if so
+            if(self.busType[i] != 'S'): #both PQ and PV buses have an explicit P equation
+                self.implicitEquationList.append([self.PEquationList[i] - self.BusData['P MW'][i]])
 
-            #if slack bus, none of the equations are explicit
+        for i in range(0, len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
+            if(self.busType[i] == 'D'): #only PQ buses have an explicit Q equation
+                self.implicitEquationList.append([self.QEquationList[i] - self.BusData['Q MVAr'][i]])
+
+        #if slack bus, none of the equations are explicit
+        print("implicit equations...")
+        print(self.implicitEquationList)

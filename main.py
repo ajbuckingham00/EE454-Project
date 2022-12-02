@@ -1,21 +1,30 @@
 import power_flow_test as pf
+import numpy as np
 
 #all that the constructor will do is initialize self variables, no processing
-Solver = pf.PowerFlow(5, 0.00001)
+Solver = pf.PowerFlow(5, 0.01)
 
 #this will udpate internal admittance matrix and create power flow equation matrix
-Solver.readFromFile("notes_example.xlsx")
+Solver.readFromFile("system_basecase.xlsx")
 
+i = 1
 
 while(True):
-    currentDelta, currentErrorP, currentErrorQ = Solver.newtonRaphsonIteration()
+    
+    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    print("Iteration ", i)
+    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    i += 1
+    
+    currentDelta, currentMismatches = Solver.newtonRaphsonIteration()
     
     #checks for if NR should stop iterating, max iterations or solved
-    if(max(currentErrorP) < Solver.tolerance and
-        max(currentErrorQ) < Solver.tolerance):
+    if(max(np.absolute(currentMismatches)) < Solver.tolerance):
+        
         print("Success!")
-        print(currentDelta, currentErrorP, currentErrorQ)
+        print(currentDelta, currentMismatches)
         break
+    
     elif(Solver.currIterations > Solver.maxIterations):
         print("Maximum iterations reached with no solutions")
         break

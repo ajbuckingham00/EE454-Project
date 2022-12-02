@@ -1,11 +1,11 @@
-import power_flow_test as pf
+import power_flow as pf
 import numpy as np
 
 #all that the constructor will do is initialize self variables, no processing
-Solver = pf.PowerFlow(5, 0.01)
+Solver = pf.PowerFlow(5, 0.001)
 
 #this will udpate internal admittance matrix and create power flow equation matrix
-Solver.readFromFile("system_basecase.xlsx")
+Solver.readFromFile("notes_example.xlsx")
 
 i = 1
 

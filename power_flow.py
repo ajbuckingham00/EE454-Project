@@ -39,6 +39,8 @@ class PowerFlow():
         self.voltages = 0
         self.angles = 0
         self.busType = 0
+        self.numPQ = 0
+        self.numPV = 0
 
         self.busMap = 0
 
@@ -48,6 +50,7 @@ class PowerFlow():
     def readFromFile(self, fileName):
         self.BusData = pd.read_excel(fileName, sheet_name = 0)
         self.BusData = self.BusData.sort_values( by='Type', ascending = False) #sort data by bus type
+        print(self.BusData)
 
         self.LineData = pd.read_excel(fileName, sheet_name = 1) #need to sort lineData?
 
@@ -103,13 +106,30 @@ class PowerFlow():
 
         self.admittanceReal = np.real(admittanceComplex)
         self.admittanceImag = np.imag(admittanceComplex)
+
+        print("Real Admittance:")
+        print(self.admittanceReal)
+        print()
+        print("Imaginary Admittance:")
+        print(self.admittanceImag)
+        print()
         
     def getVoltages(self): #voltages AND angles
-        self.voltages = np.array(self.BusData['V Set'])
-        self.angles = np.zeros_like(self.voltages)
+        self.voltages = np.array(self.BusData['V Set'], dtype = float)
+        self.angles = np.zeros_like(self.voltages, dtype = float)
+
+        print("Voltages: ")
+        print(self.voltages)
+        print()
+
+        print("Angles: ")
+        print(self.angles)
+        print()
 
     def getBusType(self):
         self.busType = np.array(self.BusData['Type'])
+        self.numPQ = np.count_nonzero(self.busType == 'D')
+        self.numPV = np.count_nonzero(self.busType == 'G')
 
     def newtonRaphsonIteration(self):
         #update all these values
@@ -120,106 +140,171 @@ class PowerFlow():
         self.updateVoltages()
         self.updateEquationLists()
 
-        return self.deltaList, self.PEquationList, self.QEquationList
+        return self.deltaList, self.implicitEquationList
 
     #update the inverse jacobian matrix
     def updateInverseJacobian(self):
-        numPQ = np.count_nonzero(self.busType == 'D')
-        numPV = np.count_nonzero(self.busType == 'G')
-        jacobian = np.zeros(((self.numBusses-1) + numPQ, (self.numBusses-1) + numPQ))
+        
+        jacobian = np.zeros( ( (self.numBusses-1) + self.numPQ, (self.numBusses-1) + self.numPQ), dtype = float)
 
-        # H matrix
-        # H goes from 2 to the number of busses
-        for i in range(1, self.numBusses):
-            for k in range(1, self.numBusses):
+        jacobian = self.buildHMatrix(jacobian)
+        jacobian = self.buildMMatrix(jacobian)
+        jacobian = self.buildNMatrix(jacobian)
+        jacobian = self.buildLMatrix(jacobian)
+
+        print("Jacobian:")
+        print(jacobian)
+        print()
+        self.inverseJacobian = np.linalg.inv(jacobian)
+        
+    def buildHMatrix(self, jacobian):
+
+        jacobianRow = 0 #the starting row of the jacobian for region H
+        
+        for k in range(2, self.numBusses + 1): #k goes from 2 to N
+            k -= 1 #to use k for matrix indices that start at 0
+            jacobianCol = 0 #the starting column of the jacobian for region H
+            for i in range(2, self.numBusses + 1): #i goes from 2 to N
+                i -= 1 #to use i for matrix indices that start at 0
+
                 if i != k:
-                    jacobian[k - 1][i - 1] = (self.voltages[k] * self.voltages[i]) * (
+                    jacobian[jacobianRow][jacobianCol] = self.voltages[k]*self.voltages[i] * (
                             self.admittanceReal[k][i] * np.sin(self.angles[k] - self.angles[i]) -
                             self.admittanceImag[k][i] * np.cos(self.angles[k] - self.angles[i])
                         )
+                    
                 else:
-                    for l in range(0, self.numBusses):
+                    for l in range(1, self.numBusses + 1):
+                        l -= 1 #to use l for matrix indices that start at 0
                         if l != k:
-                            jacobian[k - 1][i - 1] += (self.voltages[k] * self.voltages[l]) * (
-                                    np.negative(self.admittanceReal[k][l]) * np.sin(self.angles[k] - self.angles[l]) -
+                            jacobian[jacobianRow][jacobianCol] += self.voltages[k]*self.voltages[l] * (
+                                    -1.0 * self.admittanceReal[k][l] * np.sin(self.angles[k] - self.angles[l]) +
                                     self.admittanceImag[k][l] * np.cos(self.angles[k] - self.angles[l])
                                 )
-        print("H processed...")
-        print(jacobian)
+                            
+                jacobianCol += 1
+            jacobianRow += 1
+            
+        return jacobian
 
-        # M matrix
-        for i in range(numPV + 1, self.numBusses):
-            for k in range(1, self.numBusses):
+    def buildMMatrix(self, jacobian):
+
+        jacobianRow = 0 #the starting row of the jacobian for region M
+        
+        for k in range(2, self.numBusses + 1): #k goes from 2 to N
+            k -= 1 #to use k for matrix indices that start at 0
+            jacobianCol = self.numBusses - 1 #the starting column of the jacobian for region M
+            for i in range((self.numPV + 1) + 1, self.numBusses + 1): #i goes from m+1 to N, m is number of PV buses + 1
+                i -= 1 #to use i for matrix indices that start at 0
+
                 if i != k:
-                    jacobian[k - 1][(self.numBusses - 1 + i) - 1] = self.voltages[k] * (
+                    jacobian[jacobianRow][jacobianCol] = self.voltages[k] * (
                             self.admittanceReal[k][i] * np.cos(self.angles[k] - self.angles[i]) +
                             self.admittanceImag[k][i] * np.sin(self.angles[k] - self.angles[i])
                         )
+                    
+                else:
+                    jacobian[jacobianRow][jacobianCol] += 2 * self.admittanceReal[k][k] * self.voltages[k]
+                    for l in range(1, self.numBusses + 1):
+                        l -= 1 #to use l for matrix indices that start at 0
+                        if l != k:
+                            jacobian[jacobianRow][jacobianCol] += self.voltages[l] * (
+                                    self.admittanceReal[k][l] * np.cos(self.angles[k] - self.angles[l]) +
+                                    self.admittanceImag[k][l] * np.sin(self.angles[k] - self.angles[l])
+                                )
+                jacobianCol += 1
+            jacobianRow += 1
+
+        return jacobian
+
+    def buildNMatrix(self, jacobian):
+
+        jacobianRow = self.numBusses - 1 #the starting row of the jacobian for region N
+        
+        for k in range((self.numPV + 1) + 1, self.numBusses + 1): #k goes from m+1 to N, m is number of PV buses + 1
+            k -= 1 #to use k for matrix indices that start at 0
+            jacobianCol = 0 #the starting column of the jacobian for region N
+            for i in range(2, self.numBusses + 1): #i goes 2 to N
+                i -= 1 #to use i for matrix indices that start at 0
+
+                if i != k:
+                    jacobian[jacobianRow][jacobianCol] = self.voltages[k]*self.voltages[i] * (
+                            -1.0 * self.admittanceReal[k][i] * np.cos(self.angles[k] - self.angles[i]) +
+                            -1.0 * self.admittanceImag[k][i] * np.sin(self.angles[k] - self.angles[i])
+                        )
+                    
+                else:
+                    for l in range(1, self.numBusses + 1):
+                        l -= 1 #to use l for matrix indices that start at 0
+                        if l != k:
+                            jacobian[jacobianRow][jacobianCol] += self.voltages[k]*self.voltages[l] * (
+                                    self.admittanceReal[k][l] * np.cos(self.angles[k] - self.angles[l]) +
+                                    self.admittanceImag[k][l] * np.sin(self.angles[k] - self.angles[l])
+                                )
+                jacobianCol += 1
+            jacobianRow += 1
+
+        return jacobian
+
+    def buildLMatrix(self, jacobian):
+
+        jacobianRow = self.numBusses - 1 #the starting row of the jacobian for region L
+        
+        for k in range((self.numPV + 1) + 1, self.numBusses + 1): #k goes from m+1 to N, m is number of PV buses + 1
+            k -= 1 #to use k for matrix indices that start at 0
+            jacobianCol = self.numBusses - 1 #the starting column of the jacobian for region L
+            for i in range((self.numPV + 1) + 1, self.numBusses + 1): #k goes from m+1 to N, m is number of PV buses + 1
+                i -= 1 #to use i for matrix indices that start at 0
+
+                if i != k:
+                    jacobian[jacobianRow][jacobianCol] = self.voltages[k] * (
+                            self.admittanceReal[k][i] * np.sin(self.angles[k] - self.angles[i]) +
+                            -1.0 * self.admittanceImag[k][i] * np.cos(self.angles[k] - self.angles[i])
+                        )
+                    
+                else:
+                    jacobian[jacobianRow][jacobianCol] += -2 * self.admittanceImag[k][k]*self.voltages[k]
+                    for l in range(1, self.numBusses + 1):
+                        l -= 1 #to use l for matrix indices that start at 0
+                        if l != k:
+                            jacobian[jacobianRow][jacobianCol] += self.voltages[l] * (
+                                    self.admittanceReal[k][l] * np.sin(self.angles[k] - self.angles[l]) -
+                                    self.admittanceImag[k][l] * np.cos(self.angles[k] - self.angles[l])
+                                )
+                jacobianCol += 1
+            jacobianRow += 1
+
+        return jacobian
+                    
                 
-                else:
-                    for l in range(0, self.numBusses):
-                        if l != k:
-                            jacobian[k - 1][(self.numBusses - 1 + i) - 1] += (self.voltages[l]) * (
-                                    self.admittanceReal[k][l] * np.cos(self.angles[k] - self.angles[l]) +
-                                    self.admittanceImag[k][l] * np.sin(self.angles[k] - self.angles[l]) 
-                                ) + 2 * self.admittanceReal[k][k] * self.voltages[k]
-        print("M processed...")
-        print(jacobian)
-
-        # N matrix
-        for i in range(1, self.numBusses):
-            for k in range(numPV + 1, self.numBusses):
-                if i != k:
-                    jacobian[(self.numBusses - 1 + k) - 1][i - 1] = (self.voltages[k] * self.voltages[i]) * (
-                            np.negative(self.admittanceReal[k][i]) * np.cos(self.angles[k] - self.angles[i]) -
-                            self.admittanceImag[k][i] * np.sin(self.angles[k] - self.angles[i])
-                        )
-                else:
-                    for l in range(0, self.numBusses):
-                        if l != k:
-                            jacobian[(self.numBusses - 1 + k) - 1][i - 1] += (self.voltages[k] * self.voltages[l]) * (
-                                    self.admittanceReal[k][l] * np.cos(self.angles[k] - self.angles[l]) +
-                                    self.admittanceImag[k][l] * np.sin(self.angles[k] - self.angles[l]) 
-                                )
-        print("N processed...")
-        print(jacobian)
-
-        # L matrix
-        for i in range(numPV + 1, self.numBusses):
-            for k in range(numPV + 1, self.numBusses):
-                if i != k:
-                    jacobian[(self.numBusses - 1 + k) - 1][(self.numBusses - 1 + i) - 1] = self.voltages[k] * (
-                            self.admittanceReal[k][i] * np.sin(self.angles[k] - self.angles[i]) -
-                            self.admittanceImag[k][i] * np.cos(self.angles[k] - self.angles[i])
-                        )
-                else:
-                    jacobian[(self.numBusses - 1 + k) - 1][(self.numBusses - 1 + i) - 1] += -2 * self.admittanceImag[k][k] * self.voltages[k]
-                    for l in range(0, self.numBusses):
-                        if l != k:
-                            jacobian[(self.numBusses - 1 + k) - 1][(self.numBusses - 1 + i) - 1] += (self.voltages[l]) * (
-                                    self.admittanceReal[k][l] * np.sin(self.angles[k] - self.angles[l]) +
-                                    np.negative(self.admittanceImag[k][l]) * np.cos(self.angles[k] - self.angles[l])
-                                )
-        print("L processed...")
-        print(jacobian)
-
-
-        print("jacobian: ")
-        print(jacobian)
-        #self.inverseJacobian = np.linalg.inv(jacobian)
 
     def updateDeltaList(self):
         #check the order here, also should these be vertical matrices?
         self.deltaList = np.dot( (-1 * self.inverseJacobian), self.implicitEquationList)
+        print("Delta List:")
+        print(self.deltaList)
+        print()
 
     def updateVoltages(self):
-        #delta list will have theta2 to thetan, then vm+1 to vN
+        #delta list will have theta2 to thetaN, then vm+1 to vN
 
-        for i in range(1, self.numBusses): #pull angles out of delta list and add them to angles list
-            self.angles[i] += self.deltaList[i-1]
+        angleIndex = 1 #index of first angle to be modified by delta list
+        for i in range(0, self.numBusses - 1): #pull angles out of delta list and add them to angles list
+            self.angles[angleIndex] += self.deltaList[i][0]
+            angleIndex += 1
 
-        for i in range(self.numBusses, self.numBusses + np.count_nonzero(self.busType == 'D')): #pull voltages out of delta list and add them to voltages list
-            self.voltages[i] += self.deltaList[i-1]
+        voltageIndex = self.numPV + 1 #index of first voltage to be modified by delta list
+        for i in range(self.numBusses - 1, len(self.deltaList)): #pull voltages out of delta list and add them to voltages list
+            self.voltages[voltageIndex] += self.deltaList[i][0] #WRONG ^^
+            voltageIndex += 1
+
+        print("Voltages:")
+        print(self.voltages)
+        print()
+
+        print("Angles:")
+        print(self.angles)
+        print()
 
     def updateEquationLists(self):
         

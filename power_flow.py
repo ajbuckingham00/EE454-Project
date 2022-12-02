@@ -85,8 +85,8 @@ class PowerFlow():
             node2 = self.LineData['To'][i]
 
             #these indexes store where the admittance for the specific node should go in the matrix
-            node1Index = np.where(self.busMap == (node1 - 1))[0][0] - 1
-            node2Index = np.where(self.busMap == (node2 - 1))[0][0] - 1
+            node1Index = np.where(self.busMap == (node1 - 1))[0][0]
+            node2Index = np.where(self.busMap == (node2 - 1))[0][0]
 
             #add the admittance between nodes to corresponding off diagonal rows
             #then add the admittance between nodes and 1/2 the susceptance to the diagonal rows
@@ -172,7 +172,13 @@ class PowerFlow():
                             self.admittanceReal[k][i] * np.sin(self.angles[k] - self.angles[i]) -
                             self.admittanceImag[k][i] * np.cos(self.angles[k] - self.angles[i])
                         )
-                    
+                    print("Voltage K ", self.voltages[k])
+                    print("Voltage I ", self.voltages[i])
+                    print("adReal ", self.admittanceReal[k][i])
+                    print("adImag ", self.admittanceImag[k][i])
+                    print("angle k ", self.angles[k])
+                    print("angle I ", self.angles[i])
+                    print("Javobian Value ", jacobian[jacobianRow][jacobianCol])
                 else:
                     for l in range(1, self.numBusses + 1):
                         l -= 1 #to use l for matrix indices that start at 0

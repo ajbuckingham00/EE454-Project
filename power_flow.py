@@ -11,6 +11,7 @@
 
 import numpy as np
 import pandas as pd
+import math
 
 class PowerFlow():
 
@@ -172,13 +173,7 @@ class PowerFlow():
                             self.admittanceReal[k][i] * np.sin(self.angles[k] - self.angles[i]) -
                             self.admittanceImag[k][i] * np.cos(self.angles[k] - self.angles[i])
                         )
-                    print("Voltage K ", self.voltages[k])
-                    print("Voltage I ", self.voltages[i])
-                    print("adReal ", self.admittanceReal[k][i])
-                    print("adImag ", self.admittanceImag[k][i])
-                    print("angle k ", self.angles[k])
-                    print("angle I ", self.angles[i])
-                    print("Javobian Value ", jacobian[jacobianRow][jacobianCol])
+
                 else:
                     for l in range(1, self.numBusses + 1):
                         l -= 1 #to use l for matrix indices that start at 0
@@ -208,6 +203,7 @@ class PowerFlow():
                             self.admittanceReal[k][i] * np.cos(self.angles[k] - self.angles[i]) +
                             self.admittanceImag[k][i] * np.sin(self.angles[k] - self.angles[i])
                         )
+                    
                     
                 else:
                     jacobian[jacobianRow][jacobianCol] += 2 * self.admittanceReal[k][k] * self.voltages[k]
@@ -286,7 +282,7 @@ class PowerFlow():
 
     def updateDeltaList(self):
         #check the order here, also should these be vertical matrices?
-        self.deltaList = np.dot( (-1 * self.inverseJacobian), self.implicitEquationList)
+        self.deltaList = np.dot( (np.negative(self.inverseJacobian)), self.implicitEquationList)
         print("Delta List:")
         print(self.deltaList)
         print()
@@ -295,7 +291,7 @@ class PowerFlow():
         #delta list will have theta2 to thetaN, then vm+1 to vN
 
         angleIndex = 1 #index of first angle to be modified by delta list
-        for i in range(0, self.numBusses - 1): #pull angles out of delta list and add them to angles list
+        for i in range(self.numBusses - 1): #pull angles out of delta list and add them to angles list
             self.angles[angleIndex] += self.deltaList[i][0]
             angleIndex += 1
 
@@ -338,11 +334,11 @@ class PowerFlow():
 
         for i in range(0, len(self.PEquationList)): #get each item in the P list, see if it is implicit or not and add it if so
             if(self.busType[i] != 'S'): #both PQ and PV buses have an explicit P equation
-                self.implicitEquationList.append([self.PEquationList[i] - self.BusData['P MW'][i]])
+                self.implicitEquationList.append([self.PEquationList[i] - self.BusData['P MW'][i] / 100])
 
         for i in range(0, len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
             if(self.busType[i] == 'D'): #only PQ buses have an explicit Q equation
-                self.implicitEquationList.append([self.QEquationList[i] - self.BusData['Q MVAr'][i]])
+                self.implicitEquationList.append([self.QEquationList[i] - self.BusData['Q MVAr'][i] / 100])
 
         #if slack bus, none of the equations are explicit
         print("implicit equations...")

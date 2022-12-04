@@ -92,11 +92,6 @@ class PowerFlow():
             node1Index = np.where(self.busMap == (node1 - 1))[0][0]
             node2Index = np.where(self.busMap == (node2 - 1))[0][0]
 
-            print()
-            print(node1Index)
-            print(node2Index)
-            print()
-
             #add the admittance between nodes to corresponding off diagonal rows
             #then add the admittance between nodes and 1/2 the susceptance to the diagonal rows
 
@@ -321,75 +316,86 @@ class PowerFlow():
         self.PEquationList = np.zeros(self.numBusses)
         self.QEquationList = np.zeros(self.numBusses)
 
-        self.implicitEquationList = []
-
+        self.implicitEquationList = [] 
         #create P and Q equation list
         for i in range(self.numBusses):
             for j in range(self.numBusses):
-
                 PSum = (self.voltages[i] * self.voltages[j]) * (
-                            self.admittanceReal[i][j]*np.cos(self.angles[i] - self.angles[j]) +
-                            self.admittanceImag[i][j]*np.sin(self.angles[i] - self.angles[j])
+                            self.admittanceReal[i][j] * np.cos(self.angles[i] - self.angles[j]) +
+                            self.admittanceImag[i][j] * np.sin(self.angles[i] - self.angles[j])
                         )
 
                 QSum = (self.voltages[i] * self.voltages[j]) * (
-                            self.admittanceReal[i][j]*np.sin(self.angles[i] - self.angles[j]) -
-                            self.admittanceImag[i][j]*np.cos(self.angles[i] - self.angles[j])
+                            self.admittanceReal[i][j] * np.sin(self.angles[i] - self.angles[j]) -
+                            self.admittanceImag[i][j] * np.cos(self.angles[i] - self.angles[j])
                         )
                 
                 self.PEquationList[i] += PSum
                 self.QEquationList[i] += QSum
             print("power: ", self.PEquationList[i])
-            print("reactive: ", self.QEquationList[i])
+            #print("reactive: ", self.QEquationList[i])
             print()
         for i in range(len(self.PEquationList)): #get each item in the P list, see if it is implicit or not and add it if so
             if(self.busType[i] != 'S'): #both PQ and PV buses have an explicit P equation
-                self.implicitEquationList.append([self.PEquationList[i] - (self.BusData['P MW'][i] / 100)])
+                self.implicitEquationList.append([self.PEquationList[i] - ((self.BusData['P Gen'][self.busMap[i]] / 100) - (self.BusData['P MW'][self.busMap[i]] / 100))])
 
         for i in range(len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
             if(self.busType[i] == 'D'): #only PQ buses have an explicit Q equation
-                self.implicitEquationList.append([self.QEquationList[i] - (self.BusData['Q MVAr'][i] / 100)])
+                self.implicitEquationList.append([self.QEquationList[i] - (self.BusData['Q MVAr'][self.busMap[i]] / 100)])
 
         #if slack bus, none of the equations are explicit
         print("implicit equations...")
         print(np.vstack(self.implicitEquationList))
 
-    def output(self, filename, Delta, Mismatches):
+    def output(self, filename, mismatch):
         wb = Workbook()
-        sheet1 = wb.create_sheet("Line Check", 0)
-        sheet2 = wb.create_sheet("Voltage Check", 0)
-        sheet3 = wb.create_sheet("Delta")
-        sheet4 = wb.create_sheet()
-        lineData = ''
+        sheet1 = wb.create_sheet("List of Voltages", 0)
+        sheet2 = wb.create_sheet("Power Produce at Gen.", 1)
+        sheet3 = wb.create_sheet("Power Flow at Line", 2)
+        sheet4 = wb.create_sheet("Line Check", 3)
+        sheet5 = wb.create_sheet("Voltage Check", 4)
+
+        for i in range(self.numBusses):
+            voltageStatement = "Bus ", i + 1, "Voltage: ", self.voltages[np.where(self.busMap == i)[0][0]], "Angle: ", self.angles[np.where(self.busMap == i)[0][0]] * (180 / math.pi)
+            sheet1.append(voltageStatement)
+
+        for i in range(len(self.PEquationList)):
+            flowStatement = "Bus ", i + 1, "P MW: ", self.PEquationList[i] * 100, "Q MVAr: ", self.QEquationList[i] * 100 
+            sheet2.append(flowStatement)
+
         for i in range(self.numConnections):
-            node1 = self.LineData['From'][i] - 1
-            node2 = self.LineData['To'][i] - 1
+            node1 = self.LineData['From'][i]
+            node2 = self.LineData['To'][i]
             
-            realPower = (self.voltages[node1] * self.voltages[node2]) * (
-                            self.admittanceReal[node1][node2] * np.cos(self.angles[node1] - self.angles[node2] + 
-                            self.admittanceImag[node1][node2]) * np.sin(self.angles[node1] - self.angles[node2])
+            realPower = (self.voltages[np.where(self.busMap == node1 - 1)[0][0]] * self.voltages[np.where(self.busMap == node2 - 1)[0][0]]) * (
+                            self.admittanceReal[np.where(self.busMap == node1 - 1)[0][0]][np.where(self.busMap == node2 - 1)[0][0]] * np.cos(self.angles[np.where(self.busMap == node1 - 1)[0][0]] - self.angles[np.where(self.busMap == node2 - 1)[0][0]] + 
+                            self.admittanceImag[np.where(self.busMap == node1 - 1)[0][0]][np.where(self.busMap == node2 - 1)[0][0]]) * np.sin(self.angles[np.where(self.busMap == node1 - 1)[0][0]] - self.angles[np.where(self.busMap == node2 - 1)[0][0]])
                         )
             
-            reactivePower = (self.voltages[node1] * self.voltages[node2]) * (
-                                self.admittanceReal[node1][node2] * np.sin(self.angles[node1] - self.angles[node2] -
-                                self.admittanceImag[node1][node2]) * np.cos(self.angles[node1] - self.angles[node2])
+            reactivePower = (self.voltages[np.where(self.busMap == node1 - 1)[0][0]] * self.voltages[np.where(self.busMap == node2 - 1)[0][0]]) * (
+                                self.admittanceReal[np.where(self.busMap == node1 - 1)[0][0]][np.where(self.busMap == node2 - 1)[0][0]] * np.sin(self.angles[np.where(self.busMap == node1 - 1)[0][0]] - self.angles[np.where(self.busMap == node2 - 1)[0][0]] -
+                                self.admittanceImag[np.where(self.busMap == node1 - 1)[0][0]][np.where(self.busMap == node2 - 1)[0][0]]) * np.cos(self.angles[np.where(self.busMap == node1 - 1)[0][0]] - self.angles[np.where(self.busMap == node2 - 1)[0][0]])
                             )
+            MVA = math.sqrt((100 * realPower) ** 2 + (100 * reactivePower) ** 2)
 
-            if math.sqrt((100 * realPower) ** 2 + (100 * reactivePower) ** 2) > self.LineData['Fmax, MVA'][i]:
-                lineData = "Line ", node1 + 1, " to Line ", node2 + 1, " has exceeded normal operation limit"
-                sheet1.append(lineData)
+            lineStatement = "Line:", node1, "to", node2, "P MW:", realPower * 100, "Q MVAr:", reactivePower * 100, "S MVA:", MVA
+            sheet3.append(lineStatement)
+
+            if  MVA > self.LineData['Fmax, MVA'][i]:
+                lineData = "Line ", node1, " to Line ", node2, " has exceeded normal operation limit"
+                sheet4.append(lineData)
                 
             else:
-                lineData = "Line ", node1 + 1, " to Line ", node2 + 1, " has not exceeded normal operation limit"
-                sheet1.append(lineData)
+                lineData = "Line ", node1, " to Line ", node2, " has not exceeded normal operation limit"
+                sheet4.append(lineData)
 
         
         for i in range(self.numBusses):
-            if self.voltages[i] > 1.05 or self.voltages[i] < 0.95:
-                voltageData = "Node ", self.busMap[i], "has exceeded normal operating limits"
-                sheet2.append(voltageData)
+            if self.voltages[np.where(self.busMap == i)[0][0]] > 1.05 or self.voltages[np.where(self.busMap == i)[0][0]] < 0.95:
+                voltageData = "Bus ", i + 1, "has exceeded normal operating limits"
+                sheet5.append(voltageData)
             else:
-                voltageData = "Node ", self.busMap[i], "has not exceeded normal operating limits"
-                sheet2.append(voltageData)
-            
+                voltageData = "Bus ", i + 1, "has not exceeded normal operating limits"
+                sheet5.append(voltageData)
+
         wb.save(filename)

@@ -21,8 +21,6 @@ while(True):
     i += 1
     
     currentDelta, currentMismatches = Solver.newtonRaphsonIteration()
-    arrayDelta.append(currentDelta)
-    arrayMismatches.append(currentMismatches)
 
     #checks for if NR should stop iterating, max iterations or solved
     if(max(np.absolute(currentMismatches)) < Solver.tolerance):
@@ -38,7 +36,7 @@ while(True):
         break
 
 
-Solver.output("output_base.xlsx", arrayDelta, arrayMismatches)
+Solver.output("output_base.xlsx", currentMismatches)
 
 
 #what do we actually need to output? Excel file, with what in it?

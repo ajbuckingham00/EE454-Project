@@ -11,11 +11,15 @@
 
 import numpy as np
 import pandas as pd
+from openpyxl import Workbook
 import math
+
 
 class PowerFlow():
 
     def __init__(self, maxIterations, tolerance):
+        
+        
 
         self.maxIterations = maxIterations
         self.currIterations = 0
@@ -51,7 +55,6 @@ class PowerFlow():
     def readFromFile(self, fileName):
         self.BusData = pd.read_excel(fileName, sheet_name = 0)
         self.BusData = self.BusData.sort_values( by='Type', ascending = False) #sort data by bus type
-        print(self.BusData)
 
         self.LineData = pd.read_excel(fileName, sheet_name = 1) #need to sort lineData?
 
@@ -88,6 +91,11 @@ class PowerFlow():
             #these indexes store where the admittance for the specific node should go in the matrix
             node1Index = np.where(self.busMap == (node1 - 1))[0][0]
             node2Index = np.where(self.busMap == (node2 - 1))[0][0]
+
+            print()
+            print(node1Index)
+            print(node2Index)
+            print()
 
             #add the admittance between nodes to corresponding off diagonal rows
             #then add the admittance between nodes and 1/2 the susceptance to the diagonal rows
@@ -153,8 +161,8 @@ class PowerFlow():
         jacobian = self.buildNMatrix(jacobian)
         jacobian = self.buildLMatrix(jacobian)
 
-        print("Jacobian:")
-        print(jacobian)
+        # print("Jacobian:")
+        # print(jacobian)
         print()
         self.inverseJacobian = np.linalg.inv(jacobian)
         
@@ -282,7 +290,7 @@ class PowerFlow():
 
     def updateDeltaList(self):
         #check the order here, also should these be vertical matrices?
-        self.deltaList = np.dot( (np.negative(self.inverseJacobian)), self.implicitEquationList)
+        self.deltaList = np.dot( (-1 * self.inverseJacobian), np.vstack(self.implicitEquationList))
         print("Delta List:")
         print(self.deltaList)
         print()
@@ -292,12 +300,12 @@ class PowerFlow():
 
         angleIndex = 1 #index of first angle to be modified by delta list
         for i in range(self.numBusses - 1): #pull angles out of delta list and add them to angles list
-            self.angles[angleIndex] += self.deltaList[i][0]
+            self.angles[angleIndex] += self.deltaList[i]
             angleIndex += 1
 
         voltageIndex = self.numPV + 1 #index of first voltage to be modified by delta list
         for i in range(self.numBusses - 1, len(self.deltaList)): #pull voltages out of delta list and add them to voltages list
-            self.voltages[voltageIndex] += self.deltaList[i][0] #WRONG ^^
+            self.voltages[voltageIndex] += self.deltaList[i] #WRONG ^^
             voltageIndex += 1
 
         print("Voltages:")
@@ -328,18 +336,60 @@ class PowerFlow():
                             self.admittanceReal[i][j]*np.sin(self.angles[i] - self.angles[j]) -
                             self.admittanceImag[i][j]*np.cos(self.angles[i] - self.angles[j])
                         )
-                    
+                
                 self.PEquationList[i] += PSum
                 self.QEquationList[i] += QSum
-
-        for i in range(0, len(self.PEquationList)): #get each item in the P list, see if it is implicit or not and add it if so
+            print("power: ", self.PEquationList[i])
+            print("reactive: ", self.QEquationList[i])
+            print()
+        for i in range(len(self.PEquationList)): #get each item in the P list, see if it is implicit or not and add it if so
             if(self.busType[i] != 'S'): #both PQ and PV buses have an explicit P equation
-                self.implicitEquationList.append([self.PEquationList[i] - self.BusData['P MW'][i] / 100])
+                self.implicitEquationList.append([self.PEquationList[i] - (self.BusData['P MW'][i] / 100)])
 
-        for i in range(0, len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
+        for i in range(len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
             if(self.busType[i] == 'D'): #only PQ buses have an explicit Q equation
-                self.implicitEquationList.append([self.QEquationList[i] - self.BusData['Q MVAr'][i] / 100])
+                self.implicitEquationList.append([self.QEquationList[i] - (self.BusData['Q MVAr'][i] / 100)])
 
         #if slack bus, none of the equations are explicit
         print("implicit equations...")
-        print(self.implicitEquationList)
+        print(np.vstack(self.implicitEquationList))
+
+    def output(self, filename, Delta, Mismatches):
+        wb = Workbook()
+        sheet1 = wb.create_sheet("Line Check", 0)
+        sheet2 = wb.create_sheet("Voltage Check", 0)
+        sheet3 = wb.create_sheet("Delta")
+        sheet4 = wb.create_sheet()
+        lineData = ''
+        for i in range(self.numConnections):
+            node1 = self.LineData['From'][i] - 1
+            node2 = self.LineData['To'][i] - 1
+            
+            realPower = (self.voltages[node1] * self.voltages[node2]) * (
+                            self.admittanceReal[node1][node2] * np.cos(self.angles[node1] - self.angles[node2] + 
+                            self.admittanceImag[node1][node2]) * np.sin(self.angles[node1] - self.angles[node2])
+                        )
+            
+            reactivePower = (self.voltages[node1] * self.voltages[node2]) * (
+                                self.admittanceReal[node1][node2] * np.sin(self.angles[node1] - self.angles[node2] -
+                                self.admittanceImag[node1][node2]) * np.cos(self.angles[node1] - self.angles[node2])
+                            )
+
+            if math.sqrt((100 * realPower) ** 2 + (100 * reactivePower) ** 2) > self.LineData['Fmax, MVA'][i]:
+                lineData = "Line ", node1 + 1, " to Line ", node2 + 1, " has exceeded normal operation limit"
+                sheet1.append(lineData)
+                
+            else:
+                lineData = "Line ", node1 + 1, " to Line ", node2 + 1, " has not exceeded normal operation limit"
+                sheet1.append(lineData)
+
+        
+        for i in range(self.numBusses):
+            if self.voltages[i] > 1.05 or self.voltages[i] < 0.95:
+                voltageData = "Node ", self.busMap[i], "has exceeded normal operating limits"
+                sheet2.append(voltageData)
+            else:
+                voltageData = "Node ", self.busMap[i], "has not exceeded normal operating limits"
+                sheet2.append(voltageData)
+            
+        wb.save(filename)

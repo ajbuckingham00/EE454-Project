@@ -1,5 +1,6 @@
 import power_flow as pf
 import numpy as np
+import pandas as pd 
 
 #all that the constructor will do is initialize self variables, no processing
 Solver = pf.PowerFlow(5, 0.001)
@@ -9,6 +10,9 @@ Solver.readFromFile("system_basecase.xlsx")
 
 i = 1
 
+arrayDelta = []
+arrayMismatches = []
+
 while(True):
     
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -17,17 +21,24 @@ while(True):
     i += 1
     
     currentDelta, currentMismatches = Solver.newtonRaphsonIteration()
-    
+    arrayDelta.append(currentDelta)
+    arrayMismatches.append(currentMismatches)
+
     #checks for if NR should stop iterating, max iterations or solved
     if(max(np.absolute(currentMismatches)) < Solver.tolerance):
         
         print("Success!")
-        print(currentDelta, currentMismatches)
+        print(currentDelta)
+        print()
+        print(np.vstack(currentMismatches))
         break
     
     elif(Solver.currIterations > Solver.maxIterations):
         print("Maximum iterations reached with no solutions")
         break
+
+
+Solver.output("output_base.xlsx", arrayDelta, arrayMismatches)
 
 
 #what do we actually need to output? Excel file, with what in it?

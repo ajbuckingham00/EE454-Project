@@ -36,7 +36,7 @@ while(True):
         break
 
 
-Solver.output("output_base.xlsx")
+Solver.output("output_base.xlsx", currentMismatches)
 
 
 #what do we actually need to output? Excel file, with what in it?

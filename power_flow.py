@@ -1,14 +1,3 @@
-#busdata must be in order in excel file, buses must start at 1 and go straight up to max
-
-#equations list is correct for notes example
-#jacobian is not correct for notest example
-
-#i don't think anything is correct for basecase
-
-#need to add in power from generator for those nodes
-#check over how power is gathered... not doing it correctly in the equations
-
-
 import numpy as np
 import pandas as pd
 from openpyxl import Workbook
@@ -49,7 +38,10 @@ class PowerFlow():
 
         self.busMap = 0
 
-        self.convergenceHistory = 0
+        self.maxMismatchP = []
+        self.maxMismatchPLocations = []
+        self.maxMismatchQ = []
+        self.maxMismatchQLocations = []
 
     #pulls data from excel file into class
     def readFromFile(self, fileName):
@@ -289,7 +281,7 @@ class PowerFlow():
         print( np.vstack(self.implicitEquationList))
         print()
         
-        self.deltaList = np.dot( (-1 * self.inverseJacobian), self.implicitEquationList)
+        self.deltaList = np.dot( (-1 * self.inverseJacobian), np.vstack(self.implicitEquationList))
         print("Delta List:")
         print(self.deltaList)
         print()
@@ -339,35 +331,65 @@ class PowerFlow():
                 
                 self.PEquationList[i] += PSum
                 self.QEquationList[i] += QSum
+            print("power: ", self.PEquationList[i])
+            #print("reactive: ", self.QEquationList[i])
+            print()
 
+        maximumPMismatch = 0
+        currPMismatch = 0
+        maximumPLocation = 0
+            
         for i in range(len(self.PEquationList)): #get each item in the P list, see if it is implicit or not and add it if so
             if(self.busType[i] != 'S'): #both PQ and PV buses have an explicit P equation
-                self.implicitEquationList.append([self.PEquationList[i] - ((self.BusData['P Gen'][self.busMap[i]] / 100) - (self.BusData['P MW'][self.busMap[i]] / 100))])
+                currPMismatch = self.PEquationList[i] - ((self.BusData['P Gen'][self.busMap[i]] / 100) - (self.BusData['P MW'][self.busMap[i]] / 100))
+                if currPMismatch > maximumPMismatch:
+                    maximumPMismatch = currPMismatch
+                    maximumPLocation = i
+                    
+                self.implicitEquationList.append([currPMismatch])
+
+        maximumQMismatch = 0
+        currQMismatch = 0
+        maximumQLocation = 0
 
         for i in range(len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
             if(self.busType[i] == 'D'): #only PQ buses have an explicit Q equation
-                self.implicitEquationList.append([self.QEquationList[i] + (self.BusData['Q MVAr'][self.busMap[i]] / 100)])
+                currQMismatch = self.QEquationList[i] - (self.BusData['Q MVAr'][self.busMap[i]] / 100)
+                if currQMismatch > maximumQMismatch:
+                    maximumQMismatch = currQMismatch
+                    maximumQLocation = i
+                    
+                self.implicitEquationList.append([currQMismatch])
+
+        self.maxMismatchP.append(maximumPMismatch)
+        self.maxMismatchQ.append(maximumQMismatch)
+        self.maxMismatchPLocations.append(maximumPLocation)
+        self.maxMismatchQLocations.append(maximumQLocation)
 
         #if slack bus, none of the equations are explicit
         print("implicit equations...")
         print(np.vstack(self.implicitEquationList))
 
-    def output(self, filename):
+    def output(self, filename, mismatch):
         wb = Workbook()
         sheet1 = wb.create_sheet("List of Voltages", 0)
         sheet2 = wb.create_sheet("Power Produce at Gen.", 1)
         sheet3 = wb.create_sheet("Power Flow at Line", 2)
         sheet4 = wb.create_sheet("Line Check", 3)
         sheet5 = wb.create_sheet("Voltage Check", 4)
+        sheet6 = wb.create_sheet("Convergence Record", 6)
 
+        #build sheet1
         for i in range(self.numBusses):
             voltageStatement = "Bus ", i + 1, "Voltage: ", self.voltages[np.where(self.busMap == i)[0][0]], "Angle: ", self.angles[np.where(self.busMap == i)[0][0]] * (180 / math.pi)
             sheet1.append(voltageStatement)
 
+        #build sheet2
         for i in range(len(self.PEquationList)):
-            flowStatement = "Bus ", i + 1, "P MW: ", self.PEquationList[self.busMap[i]] * 100, "Q MVAr: ", self.QEquationList[self.busMap[i]] * 100 
+            flowStatement = "Bus ", i + 1, "P MW: ", self.PEquationList[i] * 100, "Q MVAr: ", self.QEquationList[i] * 100 
             sheet2.append(flowStatement)
 
+        #build sheet3 and sheet4
         for i in range(self.numConnections):
             node1 = self.LineData['From'][i]
             node2 = self.LineData['To'][i]
@@ -397,7 +419,7 @@ class PowerFlow():
                 lineData = "Line ", node1, " to Line ", node2, " has not exceeded normal operation limit"
                 sheet4.append(lineData)
 
-        
+        #build sheet 5
         for i in range(self.numBusses):
             if self.voltages[np.where(self.busMap == i)[0][0]] > 1.05 or self.voltages[np.where(self.busMap == i)[0][0]] < 0.95:
                 voltageData = "Bus ", i + 1, "has exceeded normal operating limits"
@@ -405,5 +427,17 @@ class PowerFlow():
             else:
                 voltageData = "Bus ", i + 1, "has not exceeded normal operating limits"
                 sheet5.append(voltageData)
+
+        #build sheet6
+        sheet6.append(["Iteration", "Maximum P Mismatch", "Location of P Mismatch", "Maximum Q Mismatch", "Location of Q Mismatch"])
+
+        #trim extra mismatch data from mismatches before first newton raphson iteration
+        self.maxMismatchP = self.maxMismatchP[1:len(self.maxMismatchP)]
+        self.maxMismatchPLocations = self.maxMismatchPLocations[1:len(self.maxMismatchPLocations)]
+        self.maxMismatchQ = self.maxMismatchQ[1:len(self.maxMismatchQ)]
+        self.maxMismatchQLocations = self.maxMismatchQLocations[1:len(self.maxMismatchQLocations)]
+
+        for i in range(len(self.maxMismatchP)):
+            sheet6.append([i + 1, self.maxMismatchP[i], self.maxMismatchPLocations[i], self.maxMismatchQ[i], self.maxMismatchQLocations[i]])
 
         wb.save(filename)

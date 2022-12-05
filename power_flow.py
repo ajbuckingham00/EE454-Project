@@ -156,8 +156,8 @@ class PowerFlow():
         jacobian = self.buildNMatrix(jacobian)
         jacobian = self.buildLMatrix(jacobian)
 
-        print("Jacobian:")
-        print(jacobian)
+        # print("Jacobian:")
+        # print(jacobian)
         print()
         self.inverseJacobian = np.linalg.inv(jacobian)
         
@@ -284,8 +284,12 @@ class PowerFlow():
                 
 
     def updateDeltaList(self):
-        #check the order here, also should these be vertical matrices?
-        self.deltaList = np.dot( (-1 * self.inverseJacobian), self.implicitEquationList)
+        print(self.implicitEquationList)
+        print("vstack")
+        print( np.vstack(self.implicitEquationList))
+        print()
+        
+        self.deltaList = np.dot( (-1 * self.inverseJacobian), np.vstack(self.implicitEquationList))
         print("Delta List:")
         print(self.deltaList)
         print()
@@ -300,7 +304,7 @@ class PowerFlow():
 
         voltageIndex = self.numPV + 1 #index of first voltage to be modified by delta list
         for i in range(self.numBusses - 1, len(self.deltaList)): #pull voltages out of delta list and add them to voltages list
-            self.voltages[voltageIndex] += self.deltaList[i] #WRONG ^^
+            self.voltages[voltageIndex] += self.deltaList[i] 
             voltageIndex += 1
 
         print("Voltages:")
@@ -309,6 +313,9 @@ class PowerFlow():
 
         print("Angles:")
         print(self.angles)
+        print()
+
+        print(self.busMap)
         print()
 
     def updateEquationLists(self):
@@ -332,18 +339,20 @@ class PowerFlow():
                 
                 self.PEquationList[i] += PSum
                 self.QEquationList[i] += QSum
-            
+            print("power: ", self.PEquationList[i])
+            #print("reactive: ", self.QEquationList[i])
+            print()
         for i in range(len(self.PEquationList)): #get each item in the P list, see if it is implicit or not and add it if so
             if(self.busType[i] != 'S'): #both PQ and PV buses have an explicit P equation
                 self.implicitEquationList.append([self.PEquationList[i] - ((self.BusData['P Gen'][self.busMap[i]] / 100) - (self.BusData['P MW'][self.busMap[i]] / 100))])
 
         for i in range(len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
             if(self.busType[i] == 'D'): #only PQ buses have an explicit Q equation
-                self.implicitEquationList.append([self.QEquationList[i] + (self.BusData['Q MVAr'][self.busMap[i]] / 100)])
+                self.implicitEquationList.append([self.QEquationList[i] - (self.BusData['Q MVAr'][self.busMap[i]] / 100)])
 
         #if slack bus, none of the equations are explicit
         print("implicit equations...")
-        print(self.implicitEquationList)
+        print(np.vstack(self.implicitEquationList))
 
     def output(self, filename, mismatch):
         wb = Workbook()

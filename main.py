@@ -6,7 +6,7 @@ import pandas as pd
 Solver = pf.PowerFlow(5, 0.001)
 
 #this will udpate internal admittance matrix and create power flow equation matrix
-Solver.readFromFile("system_basecase_test2.xlsx")
+Solver.readFromFile("system_basecase_test1.xlsx")
 
 i = 1
 
@@ -36,7 +36,7 @@ while(True):
         break
 
 
-Solver.output("output_base.xlsx", currentMismatches)
+Solver.output("output_base_C1.xlsx", currentMismatches)
 
 
 #what do we actually need to output? Excel file, with what in it?

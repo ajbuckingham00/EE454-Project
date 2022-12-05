@@ -281,7 +281,7 @@ class PowerFlow():
         print( np.vstack(self.implicitEquationList))
         print()
         
-        self.deltaList = np.dot( (-1 * self.inverseJacobian), np.vstack(self.implicitEquationList))
+        self.deltaList = np.dot( (-1 * self.inverseJacobian), self.implicitEquationList)
         print("Delta List:")
         print(self.deltaList)
         print()
@@ -354,7 +354,7 @@ class PowerFlow():
 
         for i in range(len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
             if(self.busType[i] == 'D'): #only PQ buses have an explicit Q equation
-                currQMismatch = self.QEquationList[i] - (self.BusData['Q MVAr'][self.busMap[i]] / 100)
+                currQMismatch = self.QEquationList[i] + (self.BusData['Q MVAr'][self.busMap[i]] / 100)
                 if currQMismatch > maximumQMismatch:
                     maximumQMismatch = currQMismatch
                     maximumQLocation = i
@@ -377,7 +377,7 @@ class PowerFlow():
         sheet3 = wb.create_sheet("Power Flow at Line", 2)
         sheet4 = wb.create_sheet("Line Check", 3)
         sheet5 = wb.create_sheet("Voltage Check", 4)
-        sheet6 = wb.create_sheet("Convergence Record", 6)
+        sheet6 = wb.create_sheet("Convergence Record", 5)
 
         #build sheet1
         for i in range(self.numBusses):
@@ -396,6 +396,9 @@ class PowerFlow():
             
             node1Index = np.where(self.busMap == node1 - 1)[0][0]
             node2Index = np.where(self.busMap == node2 - 1)[0][0]
+
+            print(node1Index)
+            print(node2Index)
 
             realPower = (self.voltages[node1Index] * self.voltages[node2Index]) * (
                             self.admittanceReal[node1Index][node2Index] * np.cos(self.angles[node1Index] - self.angles[node2Index]) + 

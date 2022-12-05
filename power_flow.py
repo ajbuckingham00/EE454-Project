@@ -289,7 +289,7 @@ class PowerFlow():
         print( np.vstack(self.implicitEquationList))
         print()
         
-        self.deltaList = np.dot( (-1 * self.inverseJacobian), np.vstack(self.implicitEquationList))
+        self.deltaList = np.dot( (-1 * self.inverseJacobian), self.implicitEquationList)
         print("Delta List:")
         print(self.deltaList)
         print()
@@ -339,22 +339,20 @@ class PowerFlow():
                 
                 self.PEquationList[i] += PSum
                 self.QEquationList[i] += QSum
-            print("power: ", self.PEquationList[i])
-            #print("reactive: ", self.QEquationList[i])
-            print()
+
         for i in range(len(self.PEquationList)): #get each item in the P list, see if it is implicit or not and add it if so
             if(self.busType[i] != 'S'): #both PQ and PV buses have an explicit P equation
                 self.implicitEquationList.append([self.PEquationList[i] - ((self.BusData['P Gen'][self.busMap[i]] / 100) - (self.BusData['P MW'][self.busMap[i]] / 100))])
 
         for i in range(len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
             if(self.busType[i] == 'D'): #only PQ buses have an explicit Q equation
-                self.implicitEquationList.append([self.QEquationList[i] - (self.BusData['Q MVAr'][self.busMap[i]] / 100)])
+                self.implicitEquationList.append([self.QEquationList[i] + (self.BusData['Q MVAr'][self.busMap[i]] / 100)])
 
         #if slack bus, none of the equations are explicit
         print("implicit equations...")
         print(np.vstack(self.implicitEquationList))
 
-    def output(self, filename, mismatch):
+    def output(self, filename):
         wb = Workbook()
         sheet1 = wb.create_sheet("List of Voltages", 0)
         sheet2 = wb.create_sheet("Power Produce at Gen.", 1)
@@ -367,21 +365,24 @@ class PowerFlow():
             sheet1.append(voltageStatement)
 
         for i in range(len(self.PEquationList)):
-            flowStatement = "Bus ", i + 1, "P MW: ", self.PEquationList[i] * 100, "Q MVAr: ", self.QEquationList[i] * 100 
+            flowStatement = "Bus ", i + 1, "P MW: ", self.PEquationList[self.busMap[i]] * 100, "Q MVAr: ", self.QEquationList[self.busMap[i]] * 100 
             sheet2.append(flowStatement)
 
         for i in range(self.numConnections):
             node1 = self.LineData['From'][i]
             node2 = self.LineData['To'][i]
             
-            realPower = (self.voltages[np.where(self.busMap == node1 - 1)[0][0]] * self.voltages[np.where(self.busMap == node2 - 1)[0][0]]) * (
-                            self.admittanceReal[np.where(self.busMap == node1 - 1)[0][0]][np.where(self.busMap == node2 - 1)[0][0]] * np.cos(self.angles[np.where(self.busMap == node1 - 1)[0][0]] - self.angles[np.where(self.busMap == node2 - 1)[0][0]] + 
-                            self.admittanceImag[np.where(self.busMap == node1 - 1)[0][0]][np.where(self.busMap == node2 - 1)[0][0]]) * np.sin(self.angles[np.where(self.busMap == node1 - 1)[0][0]] - self.angles[np.where(self.busMap == node2 - 1)[0][0]])
+            node1Index = np.where(self.busMap == node1 - 1)[0][0]
+            node2Index = np.where(self.busMap == node2 - 1)[0][0]
+
+            realPower = (self.voltages[node1Index] * self.voltages[node2Index]) * (
+                            self.admittanceReal[node1Index][node2Index] * np.cos(self.angles[node1Index] - self.angles[node2Index]) + 
+                            self.admittanceImag[node1Index][node2Index] * np.sin(self.angles[node1Index] - self.angles[node2Index])
                         )
             
-            reactivePower = (self.voltages[np.where(self.busMap == node1 - 1)[0][0]] * self.voltages[np.where(self.busMap == node2 - 1)[0][0]]) * (
-                                self.admittanceReal[np.where(self.busMap == node1 - 1)[0][0]][np.where(self.busMap == node2 - 1)[0][0]] * np.sin(self.angles[np.where(self.busMap == node1 - 1)[0][0]] - self.angles[np.where(self.busMap == node2 - 1)[0][0]] -
-                                self.admittanceImag[np.where(self.busMap == node1 - 1)[0][0]][np.where(self.busMap == node2 - 1)[0][0]]) * np.cos(self.angles[np.where(self.busMap == node1 - 1)[0][0]] - self.angles[np.where(self.busMap == node2 - 1)[0][0]])
+            reactivePower = (self.voltages[node1Index] * self.voltages[np.where(self.busMap == node2 - 1)[0][0]]) * (
+                                self.admittanceReal[node1Index][node2Index] * np.sin(self.angles[node1Index] - self.angles[node2Index]) -
+                                self.admittanceImag[node1Index][node2Index] * np.cos(self.angles[node1Index] - self.angles[node2Index])
                             )
             MVA = math.sqrt((100 * realPower) ** 2 + (100 * reactivePower) ** 2)
 

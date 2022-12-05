@@ -156,8 +156,8 @@ class PowerFlow():
         jacobian = self.buildNMatrix(jacobian)
         jacobian = self.buildLMatrix(jacobian)
 
-        # print("Jacobian:")
-        # print(jacobian)
+        print("Jacobian:")
+        print(jacobian)
         print()
         self.inverseJacobian = np.linalg.inv(jacobian)
         
@@ -285,7 +285,7 @@ class PowerFlow():
 
     def updateDeltaList(self):
         #check the order here, also should these be vertical matrices?
-        self.deltaList = np.dot( (-1 * self.inverseJacobian), np.vstack(self.implicitEquationList))
+        self.deltaList = np.dot( (-1 * self.inverseJacobian), self.implicitEquationList)
         print("Delta List:")
         print(self.deltaList)
         print()
@@ -332,20 +332,18 @@ class PowerFlow():
                 
                 self.PEquationList[i] += PSum
                 self.QEquationList[i] += QSum
-            print("power: ", self.PEquationList[i])
-            #print("reactive: ", self.QEquationList[i])
-            print()
+            
         for i in range(len(self.PEquationList)): #get each item in the P list, see if it is implicit or not and add it if so
             if(self.busType[i] != 'S'): #both PQ and PV buses have an explicit P equation
                 self.implicitEquationList.append([self.PEquationList[i] - ((self.BusData['P Gen'][self.busMap[i]] / 100) - (self.BusData['P MW'][self.busMap[i]] / 100))])
 
         for i in range(len(self.QEquationList)): #get each item in the Q list, see if it is implicit or not and add it if so
             if(self.busType[i] == 'D'): #only PQ buses have an explicit Q equation
-                self.implicitEquationList.append([self.QEquationList[i] - (self.BusData['Q MVAr'][self.busMap[i]] / 100)])
+                self.implicitEquationList.append([self.QEquationList[i] + (self.BusData['Q MVAr'][self.busMap[i]] / 100)])
 
         #if slack bus, none of the equations are explicit
         print("implicit equations...")
-        print(np.vstack(self.implicitEquationList))
+        print(self.implicitEquationList)
 
     def output(self, filename, mismatch):
         wb = Workbook()

@@ -26,9 +26,9 @@ while(True):
     if(max(np.absolute(currentMismatches)) < Solver.tolerance):
         
         print("Success!")
-        print(currentDelta)
+        # print(currentDelta)
         print()
-        print(np.vstack(currentMismatches))
+        # print(np.vstack(currentMismatches))
         break
     
     elif(Solver.currIterations > Solver.maxIterations):

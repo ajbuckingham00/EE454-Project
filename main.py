@@ -1,34 +1,35 @@
+#This file controls the operation of a power flow solving program
+#The functions of the program are contained in a class in a separate file called power_flow.py
+#This main.py file will setup the class with input data, then manage the iterations of the newton raphson technique
+#   which is used to solve the power flow
+
 import power_flow as pf
 import numpy as np
-import pandas as pd 
 
-#all that the constructor will do is initialize self variables, no processing
+#create a new power flow solver, with arguments for maximum number of iterations and mismatch tolerance before stopping iterations
 Solver = pf.PowerFlow(5, 0.001)
 
-#this will udpate internal admittance matrix and create power flow equation matrix
-Solver.readFromFile("system_basecase_test1.xlsx")
+#update power flow solver with input data from excel file given in argument
+Solver.readFromFile("system_basecase.xlsx")
 
-i = 1
+i = 1 #index counter for tracking number of iterations
 
-arrayDelta = []
-arrayMismatches = []
-
-while(True):
+#loop will perform newton raphson iterations until a solution converges or the maximum number of iterations is reached
+while(True): 
     
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("Iteration ", i)
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     i += 1
     
-    currentDelta, currentMismatches = Solver.newtonRaphsonIteration()
+    currentMismatches = Solver.newtonRaphsonIteration() #get the current mismatch values to see if they are below the tolerance
 
-    #checks for if NR should stop iterating, max iterations or solved
+    #if the current mismatches are below the tolerance, stop iterating because a solution is reached
+    #otherwise, keep iterating until maximum iterations are reached or a solution is found
     if(max(np.absolute(currentMismatches)) < Solver.tolerance):
         
         print("Success!")
-        print(currentDelta)
         print()
-        print(np.vstack(currentMismatches))
         break
     
     elif(Solver.currIterations > Solver.maxIterations):
@@ -36,14 +37,5 @@ while(True):
         break
 
 
-Solver.output("output_base_C1.xlsx", currentMismatches)
-
-
-#what do we actually need to output? Excel file, with what in it?
-    #Network admittance matrix - already make that with Sam's function
-    #Convergence history of bus results. Will need to store this
-        #and update it every loop through NR
-    #Final bus results. Will need to have a full equation matrix stored
-        #as well as a equation matrix with only the implicit needed for NR
-    # Line flows and MVA limit check... will need functions in class to do this as well
-
+#store output data into excel file with name given in argument. 
+Solver.output("output_base.xlsx")

@@ -6,7 +6,7 @@ import pandas as pd
 Solver = pf.PowerFlow(5, 0.001)
 
 #this will udpate internal admittance matrix and create power flow equation matrix
-Solver.readFromFile("system_basecase.xlsx")
+Solver.readFromFile("system_basecase_test2.xlsx")
 
 i = 1
 
